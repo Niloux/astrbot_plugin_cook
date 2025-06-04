@@ -194,16 +194,15 @@ class CookPlugin(Star):
         logger.info(f"食谱插件初始化完成，共加载 {self.recipes.total_count} 种菜品")
 
     @filter.command("吃点啥")
-    async def random_recommend(self, event: AstrMessageEvent):
+    async def random_recommend(self, event: AstrMessageEvent, category: str = ""):
         """随机推荐菜品 - 可指定分类，如：/吃点啥 主食"""
         if not self.recipes:
             yield event.plain_result("❌ 食谱数据未加载完成，请稍后再试")
             return
 
-        message_str = event.message_str.strip()
-        if message_str:
+        if category:
             # 指定分类推荐
-            result = self.recipes.random_recipe(message_str)
+            result = self.recipes.random_recipe(category)
         else:
             # 随机推荐一道菜
             result = self.recipes.get_random_recipes(1)
@@ -221,14 +220,13 @@ class CookPlugin(Star):
         yield event.plain_result(result)
 
     @filter.command("菜谱搜索")
-    async def search_recipe(self, event: AstrMessageEvent):
+    async def search_recipe(self, event: AstrMessageEvent, keyword: str):
         """搜索菜品 - 根据关键词搜索，如：/菜谱搜索 鸡"""
         if not self.recipes:
             yield event.plain_result("❌ 食谱数据未加载完成，请稍后再试")
             return
 
-        keyword = event.message_str.strip()
-        if not keyword:
+        if not keyword.strip():
             yield event.plain_result("❌ 请提供搜索关键词，如：/菜谱搜索 鸡")
             return
 
@@ -236,14 +234,13 @@ class CookPlugin(Star):
         yield event.plain_result(result)
 
     @filter.command("怎么做")
-    async def how_to_cook(self, event: AstrMessageEvent):
+    async def how_to_cook(self, event: AstrMessageEvent, dish_name: str):
         """获取菜品制作方法 - 如：/怎么做 手工水饺"""
         if not self.recipes:
             yield event.plain_result("❌ 食谱数据未加载完成，请稍后再试")
             return
 
-        dish_name = event.message_str.strip()
-        if not dish_name:
+        if not dish_name.strip():
             yield event.plain_result("❌ 请提供菜品名称，如：/怎么做 手工水饺")
             return
 
@@ -251,13 +248,19 @@ class CookPlugin(Star):
         yield event.plain_result(result)
 
     @filter.command("随机推荐")
-    async def random_recipes(self, event: AstrMessageEvent):
-        """随机推荐3道不同的菜品"""
+    async def random_recipes(self, event: AstrMessageEvent, count: int = 3):
+        """随机推荐菜品 - 可指定数量，如：/随机推荐 5"""
         if not self.recipes:
             yield event.plain_result("❌ 食谱数据未加载完成，请稍后再试")
             return
 
-        result = self.recipes.get_random_recipes(3)
+        # 限制推荐数量在合理范围内
+        if count < 1:
+            count = 1
+        elif count > 10:
+            count = 10
+
+        result = self.recipes.get_random_recipes(count)
         yield event.plain_result(result)
 
     async def terminate(self):

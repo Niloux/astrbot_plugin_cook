@@ -1,5 +1,6 @@
 name: astrbot_plugin_cook
-desc: 解决吃什么以及怎么吃的问题
+desc: AstrBot插件，解决今天吃什么难题
+help: 输入 /菜谱分类 查看指令帮助
 version: v1.0
-author: Niloux3d
+author: Niloux
 repo: https://github.com/Niloux/astrbot_plugin_cook

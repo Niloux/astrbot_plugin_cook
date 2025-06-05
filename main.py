@@ -1,268 +1,250 @@
-"""吃点啥 - AstrBot 食谱插件"""
+"""吃点啥 - AstrBot 食谱插件 (重构版)"""
 
-import random
-import urllib.parse
-
-import httpx
+from typing import Optional
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
-
-class Recipes:
-    """食谱获取与管理类"""
-
-    BASE_URL = "https://cook.aiursoft.cn/search/search_index.json"
-    SITE_URL = "https://cook.aiursoft.cn/"
-    TYPES = {
-        "aquatic": "水产",
-        "breakfast": "早餐",
-        "condiment": "酱料与其他材料",
-        "dessert": "甜点",
-        "drink": "饮料",
-        "meat_dish": "荤菜",
-        "semi-finished": "半成品加工",
-        "soup": "汤与粥",
-        "staple": "主食",
-        "vegetable_dish": "素菜",
-    }
-    TYPES_ZH_TO_EN = {type_zh: type_en for type_en, type_zh in TYPES.items()}
-
-    def __init__(self):
-        self.recipes = {type_zh: {} for type_zh in self.TYPES.values()}
-        self.total_count = 0
-
-    async def fetch_and_process_recipes(self):
-        """从远程获取并处理食谱数据"""
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(self.BASE_URL)
-                response.raise_for_status()
-                data = response.json().get("docs", [])
-                self._process_recipes(data)
-        except httpx.RequestError as e:
-            logger.error(f"请求失败: {e}")
-        except ValueError as e:
-            logger.error(f"解析响应失败: {e}")
-
-    def _process_recipes(self, data):
-        """处理并分类存储食谱数据"""
-        if not data:
-            logger.error("未获取到食谱数据。")
-            return
-
-        dish_urls = {}
-
-        for item in data:
-            location = item.get("location", "")
-            if not location or "dishes/" not in location or "#" in location:
-                continue
-
-            parts = location.split("dishes/")
-            if len(parts) < 2:
-                continue
-
-            path_parts = parts[1].strip("/").split("/")
-            if len(path_parts) < 2:
-                continue
-
-            category = path_parts[0]
-            dish_name_encoded = path_parts[1]
-
-            try:
-                dish_name = urllib.parse.unquote(dish_name_encoded)
-            except Exception:
-                continue
-
-            if category not in self.TYPES:
-                continue
-
-            category_zh = self.TYPES[category]
-
-            if dish_name not in dish_urls:
-                dish_urls[dish_name] = location
-                self.recipes[category_zh][dish_name] = location
-
-        self.total_count = sum(len(dishes) for dishes in self.recipes.values())
-
-        if self.total_count == 0:
-            logger.warning("没有找到有效的菜谱数据")
-
-    def random_recipe(self, category):
-        """随机获取指定分类中的菜品"""
-        if category not in self.recipes:
-            return f"❌ 未知分类: {category}\n🏷️ 可用分类: {', '.join(self.recipes.keys())}"
-
-        if not self.recipes[category]:
-            return f"😔 分类 '{category}' 下暂时没有菜品。"
-
-        selected_dish = random.choice(list(self.recipes[category].keys()))
-        return f"🍽️ 推荐的{category}: {selected_dish}"
-
-    def what_we_have(self, category):
-        """获取指定分类下的菜品列表"""
-        if category not in self.recipes:
-            available_categories = ", ".join(self.recipes.keys())
-            return f"❌ 未知分类: {category}\n🏷️ 可用分类: {available_categories}"
-
-        dishes = list(self.recipes[category].keys())
-        if dishes:
-            if len(dishes) > 20:
-                shown_dishes = dishes[:20]
-                dish_list = "\n".join(f"• {dish}" for dish in shown_dishes)
-                return f"🍽️ {category} 分类下的菜品（显示前20个，共{len(dishes)}个）：\n{dish_list}\n\n... 还有 {len(dishes) - 20} 个菜品"
-            else:
-                dish_list = "\n".join(f"• {dish}" for dish in dishes)
-                return f"🍽️ {category} 分类下的菜品（共{len(dishes)}个）：\n{dish_list}"
-        else:
-            return f"😔 {category} 分类下暂时没有菜品。"
-
-    def how_to_cook(self, food):
-        """获取菜品的制作方式"""
-        for category, dishes in self.recipes.items():
-            if food in dishes:
-                dish_url = dishes[food]
-                full_url = self.SITE_URL + dish_url
-                return f"📖 {food} 的制作方式：\n{full_url}"
-
-        return f"❌ 未找到菜品: {food}\n💡 建议使用 /菜谱分类 查看可用菜品"
-
-    def search_recipe(self, keyword):
-        """根据关键词搜索菜品"""
-        results = []
-        for category, dishes in self.recipes.items():
-            for dish_name in dishes.keys():
-                if keyword.lower() in dish_name.lower():
-                    results.append((category, dish_name))
-
-        if not results:
-            return f"🔍 没有找到包含 '{keyword}' 的菜品"
-
-        if len(results) > 10:
-            shown_results = results[:10]
-            result_list = "\n".join(f"• {dish} ({category})" for category, dish in shown_results)
-            return f"🔍 搜索 '{keyword}' 的结果（显示前10个，共{len(results)}个）：\n{result_list}\n\n... 还有 {len(results) - 10} 个结果"
-        else:
-            result_list = "\n".join(f"• {dish} ({category})" for category, dish in results)
-            return f"🔍 搜索 '{keyword}' 的结果（共{len(results)}个）：\n{result_list}"
-
-    def get_random_recipes(self, count=3):
-        """获取随机推荐的菜品"""
-        all_dishes = []
-        for category, dishes in self.recipes.items():
-            for dish_name in dishes.keys():
-                all_dishes.append((category, dish_name))
-
-        if not all_dishes:
-            return "😔 暂无可推荐的菜品"
-
-        random_count = min(count, len(all_dishes))
-        random_dishes = random.sample(all_dishes, random_count)
-
-        result_list = "\n".join(f"• {dish} ({category})" for category, dish in random_dishes)
-        return f"🎲 随机推荐 {random_count} 道菜：\n{result_list}"
-
-    def help(self):
-        """生成帮助信息"""
-        msgs = ["🍳 吃点啥 - 食谱助手"]
-        msgs.append("=" * 25)
-        msgs.append("📊 分类及菜品数量:")
-        for category, dishes in self.recipes.items():
-            msgs.append(f"  {category}: {len(dishes)} 种菜品")
-        msgs.append(f"\n📈 总计: {self.total_count} 种菜品")
-        msgs.append("\n🔧 可用指令:")
-        msgs.append("• /吃点啥 [分类] - 随机推荐菜品")
-        msgs.append("• /菜谱分类 - 查看所有分类")
-        msgs.append("• /菜谱搜索 <关键词> - 搜索菜品")
-        msgs.append("• /怎么做 <菜名> - 获取制作方法")
-        msgs.append("• /随机推荐 - 随机推荐3道菜")
-        return "\n".join(msgs)
+from .config.settings import RecipeConfig
+from .data.remote_source import RemoteRecipeSource
+from .services.recipe_service import RecipeService
+from .utils.formatters import ResponseFormatter
+from .utils.validators import DataValidator, ValidationError
 
 
-@register("cook", "AstrBot", "吃点啥 - 食谱推荐插件", "1.0.0")
+@register("cook", "AstrBot", "吃点啥 - 食谱推荐插件", "2.0.0")
 class CookPlugin(Star):
+    """食谱插件主类 - 重构版
+
+    提供食谱搜索、随机推荐、分类查看等功能
+    使用全新的架构设计，提供更好的性能和可维护性
+    """
+
     def __init__(self, context: Context):
         super().__init__(context)
-        self.recipes = None
+
+        # 核心服务组件
+        self._recipe_service: Optional[RecipeService] = None
+        self._validator: Optional[DataValidator] = None
+        self._formatter: Optional[ResponseFormatter] = None
+        self._config: Optional[RecipeConfig] = None
+
+        # 初始化状态
+        self._is_ready = False
+        self._initialization_error: Optional[str] = None
 
     async def initialize(self):
-        """初始化食谱数据"""
-        logger.info("正在初始化食谱插件...")
-        self.recipes = Recipes()
-        await self.recipes.fetch_and_process_recipes()
-        logger.info(f"食谱插件初始化完成，共加载 {self.recipes.total_count} 种菜品")
+        """初始化插件"""
+        try:
+            logger.info("开始初始化食谱插件 v2.0...")
+
+            # 1. 加载配置
+            self._config = RecipeConfig()
+            self._config.validate()
+
+            # 2. 初始化工具类
+            self._validator = DataValidator(self._config)
+            self._formatter = ResponseFormatter(self._config)
+
+            # 3. 初始化数据源
+            data_source = RemoteRecipeSource(self._config)
+
+            # 4. 初始化核心服务
+            self._recipe_service = RecipeService(data_source, self._config)
+            await self._recipe_service.initialize()
+
+            self._is_ready = True
+            logger.info("食谱插件初始化完成 v2.0")
+
+        except Exception as e:
+            error_msg = f"食谱插件初始化失败: {str(e)}"
+            logger.error(error_msg)
+            self._initialization_error = error_msg
+            self._is_ready = False
+
+    def _ensure_ready(self) -> bool:
+        """确保插件已准备就绪"""
+        return self._is_ready and self._recipe_service is not None
+
+    def _get_error_response(self, event: AstrMessageEvent) -> str:
+        """获取错误响应"""
+        if self._initialization_error:
+            return f"❌ 插件未就绪: {self._initialization_error}"
+        else:
+            return "❌ 食谱数据未加载完成，请稍后再试"
 
     @filter.command("吃点啥")
     async def random_recommend(self, event: AstrMessageEvent, category: str = ""):
         """随机推荐菜品 - 可指定分类，如：/吃点啥 主食"""
-        if not self.recipes:
-            yield event.plain_result("❌ 食谱数据未加载完成，请稍后再试")
+        if not self._ensure_ready():
+            yield event.plain_result(self._get_error_response(event))
             return
 
-        if category:
-            # 指定分类推荐
-            result = self.recipes.random_recipe(category)
-        else:
-            # 随机推荐一道菜
-            result = self.recipes.get_random_recipes(1)
+        try:
+            # 输入验证和清理
+            if category:
+                category = self._validator.sanitize_input(category)
 
-        yield event.plain_result(result)
+                # 验证分类（在服务层会进一步验证）
+                if not category.strip():
+                    yield event.plain_result("❌ 分类名称不能为空")
+                    return
+
+            # 调用服务层
+            result = await self._recipe_service.get_random_recipe(category if category else None)
+            yield event.plain_result(result)
+
+        except ValidationError as e:
+            error_msg = self._formatter.format_validation_error(e.field, e.value, e.reason)
+            yield event.plain_result(error_msg)
+        except Exception as e:
+            logger.error(f"随机推荐失败: {str(e)}")
+            yield event.plain_result(f"❌ 推荐失败: {str(e)}")
 
     @filter.command("菜谱分类")
     async def show_categories(self, event: AstrMessageEvent):
         """查看所有菜品分类"""
-        if not self.recipes:
-            yield event.plain_result("❌ 食谱数据未加载完成，请稍后再试")
+        if not self._ensure_ready():
+            yield event.plain_result(self._get_error_response(event))
             return
 
-        result = self.recipes.help()
-        yield event.plain_result(result)
+        try:
+            result = self._recipe_service.get_categories_info()
+            yield event.plain_result(result)
+
+        except Exception as e:
+            logger.error(f"获取分类信息失败: {str(e)}")
+            yield event.plain_result(f"❌ 获取分类信息失败: {str(e)}")
 
     @filter.command("菜谱搜索")
     async def search_recipe(self, event: AstrMessageEvent, keyword: str):
         """搜索菜品 - 根据关键词搜索，如：/菜谱搜索 鸡"""
-        if not self.recipes:
-            yield event.plain_result("❌ 食谱数据未加载完成，请稍后再试")
+        if not self._ensure_ready():
+            yield event.plain_result(self._get_error_response(event))
             return
 
-        if not keyword.strip():
-            yield event.plain_result("❌ 请提供搜索关键词，如：/菜谱搜索 鸡")
-            return
+        try:
+            # 输入验证
+            keyword = self._validator.validate_search_keyword(keyword)
 
-        result = self.recipes.search_recipe(keyword)
-        yield event.plain_result(result)
+            # 调用服务层
+            result = await self._recipe_service.search_recipes(keyword)
+            yield event.plain_result(result)
+
+        except ValidationError as e:
+            error_msg = self._formatter.format_validation_error(e.field, e.value, e.reason)
+            yield event.plain_result(error_msg)
+        except Exception as e:
+            logger.error(f"搜索失败: {str(e)}")
+            yield event.plain_result(f"❌ 搜索失败: {str(e)}")
 
     @filter.command("怎么做")
     async def how_to_cook(self, event: AstrMessageEvent, dish_name: str):
         """获取菜品制作方法 - 如：/怎么做 手工水饺"""
-        if not self.recipes:
-            yield event.plain_result("❌ 食谱数据未加载完成，请稍后再试")
+        if not self._ensure_ready():
+            yield event.plain_result(self._get_error_response(event))
             return
 
-        if not dish_name.strip():
-            yield event.plain_result("❌ 请提供菜品名称，如：/怎么做 手工水饺")
-            return
+        try:
+            # 输入验证
+            dish_name = self._validator.validate_recipe_name(dish_name)
 
-        result = self.recipes.how_to_cook(dish_name)
-        yield event.plain_result(result)
+            # 调用服务层
+            result = await self._recipe_service.get_recipe_url(dish_name)
+            yield event.plain_result(result)
+
+        except ValidationError as e:
+            error_msg = self._formatter.format_validation_error(e.field, e.value, e.reason)
+            yield event.plain_result(error_msg)
+        except Exception as e:
+            logger.error(f"获取制作方法失败: {str(e)}")
+            yield event.plain_result(f"❌ 获取制作方法失败: {str(e)}")
 
     @filter.command("随机推荐")
     async def random_recipes(self, event: AstrMessageEvent, count: int = 3):
         """随机推荐菜品 - 可指定数量，如：/随机推荐 5"""
-        if not self.recipes:
-            yield event.plain_result("❌ 食谱数据未加载完成，请稍后再试")
+        if not self._ensure_ready():
+            yield event.plain_result(self._get_error_response(event))
             return
 
-        # 限制推荐数量在合理范围内
-        if count < 1:
-            count = 1
-        elif count > 10:
-            count = 10
+        try:
+            # 输入验证
+            count = self._validator.validate_random_count(count)
 
-        result = self.recipes.get_random_recipes(count)
-        yield event.plain_result(result)
+            # 调用服务层
+            result = await self._recipe_service.get_random_recipes_batch(count)
+            yield event.plain_result(result)
+
+        except ValidationError as e:
+            error_msg = self._formatter.format_validation_error(e.field, e.value, e.reason)
+            yield event.plain_result(error_msg)
+        except Exception as e:
+            logger.error(f"随机推荐失败: {str(e)}")
+            yield event.plain_result(f"❌ 随机推荐失败: {str(e)}")
+
+    @filter.command("食谱统计")
+    async def show_stats(self, event: AstrMessageEvent):
+        """显示插件统计信息 - 管理员功能"""
+        if not self._ensure_ready():
+            yield event.plain_result(self._get_error_response(event))
+            return
+
+        try:
+            stats = self._recipe_service.get_service_stats()
+            result = self._formatter.format_stats(stats)
+            yield event.plain_result(result)
+
+        except Exception as e:
+            logger.error(f"获取统计信息失败: {str(e)}")
+            yield event.plain_result(f"❌ 获取统计信息失败: {str(e)}")
+
+    @filter.command("重载食谱")
+    async def reload_recipes(self, event: AstrMessageEvent):
+        """重新加载食谱数据 - 管理员功能"""
+        if not self._ensure_ready():
+            yield event.plain_result(self._get_error_response(event))
+            return
+
+        try:
+            result = await self._recipe_service.reload_data()
+            yield event.plain_result(result)
+
+        except Exception as e:
+            logger.error(f"重载数据失败: {str(e)}")
+            yield event.plain_result(f"❌ 重载数据失败: {str(e)}")
+
+    @filter.command("食谱帮助")
+    async def show_help(self, event: AstrMessageEvent):
+        """显示详细帮助信息"""
+        help_text = self._formatter.format_help_text(
+            "食谱插件帮助",
+            "提供食谱搜索和推荐功能",
+            "使用以下命令与插件交互",
+            [
+                "/吃点啥 [分类] - 随机推荐菜品",
+                "/菜谱分类 - 查看所有分类",
+                "/菜谱搜索 <关键词> - 搜索菜品",
+                "/怎么做 <菜名> - 获取制作方法",
+                "/随机推荐 [数量] - 随机推荐多道菜",
+                "/食谱统计 - 查看统计信息",
+                "/重载食谱 - 重新加载数据",
+                "/食谱帮助 - 显示此帮助",
+            ],
+        )
+        yield event.plain_result(help_text)
 
     async def terminate(self):
         """插件销毁时的清理工作"""
-        logger.info("食谱插件已卸载")
+        try:
+            if self._recipe_service:
+                await self._recipe_service.cleanup()
+
+            logger.info("食谱插件已卸载")
+
+        except Exception as e:
+            logger.error(f"插件清理失败: {str(e)}")
+
+
+# 向后兼容：保留原有的类名引用
+Recipes = None  # 标记为已废弃，使用新的服务架构

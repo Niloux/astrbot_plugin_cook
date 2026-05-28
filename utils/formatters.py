@@ -50,14 +50,18 @@ class ResponseFormatter:
         result_text = "\n".join(result_lines)
         return f"🎲 随机推荐 {actual_count} 道菜：\n{result_text}"
 
-    def format_categories_info(self, categories_info: Dict[str, int], total_count: int) -> str:
+    def format_categories_info(
+        self, categories_info: Dict[str, int], total_count: int
+    ) -> str:
         """格式化分类信息"""
         lines = ["🍳 吃点啥 - 食谱助手"]
         lines.append("=" * 25)
         lines.append("📊 分类及菜品数量:")
 
         # 按菜品数量排序显示
-        sorted_categories = sorted(categories_info.items(), key=lambda x: x[1], reverse=True)
+        sorted_categories = sorted(
+            categories_info.items(), key=lambda x: x[1], reverse=True
+        )
 
         for category_zh, count in sorted_categories:
             lines.append(f"  {category_zh}: {count} 种菜品")
@@ -90,7 +94,9 @@ class ResponseFormatter:
             result_text = "\n".join(result_lines)
             return f"🍽️ {category_zh} 分类下的菜品（共{total_count}个）：\n{result_text}"
 
-    def format_invalid_category(self, invalid_category: str, valid_categories: List[str]) -> str:
+    def format_invalid_category(
+        self, invalid_category: str, valid_categories: List[str]
+    ) -> str:
         """格式化无效分类的错误信息"""
         categories_text = ", ".join(valid_categories)
         return f"❌ 未知分类: {invalid_category}\n🏷️ 可用分类: {categories_text}"
@@ -99,7 +105,9 @@ class ResponseFormatter:
         """格式化菜品制作方法URL"""
         return f"📖 {recipe.name} 的制作方式：\n{recipe.full_url}"
 
-    def format_error_message(self, error_type: str, message: str, suggestion: str = "") -> str:
+    def format_error_message(
+        self, error_type: str, message: str, suggestion: str = ""
+    ) -> str:
         """格式化错误信息"""
         result = f"❌ {error_type}: {message}"
         if suggestion:
@@ -145,7 +153,9 @@ class ResponseFormatter:
                     hit_rate = cache_info["hit_rate"]
                     size = cache_info.get("size", 0)
                     max_size = cache_info.get("max_size", 0)
-                    lines.append(f"   {cache_type}: {size}/{max_size} 命中率{hit_rate:.1%}")
+                    lines.append(
+                        f"   {cache_type}: {size}/{max_size} 命中率{hit_rate:.1%}"
+                    )
 
         # 搜索服务统计
         if "search_service" in stats and "categories_info" in stats["search_service"]:

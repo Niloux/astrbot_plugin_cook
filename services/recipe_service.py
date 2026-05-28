@@ -138,16 +138,20 @@ class RecipeService:
                 continue
             seen_dishes.add(dish_key)
 
-            processed_recipes.append({
-                "name": dish_name,
-                "category": category_en,
-                "category_zh": category_zh,
-                "url": location,
-            })
+            processed_recipes.append(
+                {
+                    "name": dish_name,
+                    "category": category_en,
+                    "category_zh": category_zh,
+                    "url": location,
+                }
+            )
 
         return processed_recipes
 
-    def _convert_to_recipes(self, processed_data: List[Dict[str, str]]) -> Dict[str, Recipe]:
+    def _convert_to_recipes(
+        self, processed_data: List[Dict[str, str]]
+    ) -> Dict[str, Recipe]:
         """将处理后的数据转换为Recipe对象"""
         recipes = {}
 
@@ -226,7 +230,9 @@ class RecipeService:
 
             formatter = ResponseFormatter(self.config)
             categories_info = self._search_service.get_categories_info()
-            return formatter.format_invalid_category(category, list(categories_info.keys()))
+            return formatter.format_invalid_category(
+                category, list(categories_info.keys())
+            )
 
         # 尝试从缓存获取
         cache_key = category or "all"
@@ -305,7 +311,9 @@ class RecipeService:
         self._stats["random_requests"] += 1
 
         # 限制数量范围
-        count = max(self.config.min_random_count, min(count, self.config.max_random_count))
+        count = max(
+            self.config.min_random_count, min(count, self.config.max_random_count)
+        )
 
         # 尝试从缓存获取
         cached_result = self._cache_service.get_random_recipes("all", count)

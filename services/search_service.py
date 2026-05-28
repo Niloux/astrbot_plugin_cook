@@ -29,7 +29,9 @@ class RecipeSearchService:
         self._category_index: Dict[str, List[Recipe]] = defaultdict(
             list
         )  # category_zh -> [Recipe]
-        self._keyword_index: Dict[str, Set[str]] = defaultdict(set)  # keyword -> {recipe_names}
+        self._keyword_index: Dict[str, Set[str]] = defaultdict(
+            set
+        )  # keyword -> {recipe_names}
 
         # 随机推荐池（预计算）
         self._random_pool: Dict[str, List[Recipe]] = {}  # category -> [Recipe]
@@ -130,10 +132,14 @@ class RecipeSearchService:
         # 再尝试大小写不敏感匹配
         return self._name_index.get(name.lower())
 
-    def search_by_keyword(self, keyword: str, max_results: Optional[int] = None) -> SearchResult:
+    def search_by_keyword(
+        self, keyword: str, max_results: Optional[int] = None
+    ) -> SearchResult:
         """根据关键词搜索食谱"""
         if not keyword.strip():
-            return SearchResult(recipes=[], total_count=0, has_more=False, query=keyword)
+            return SearchResult(
+                recipes=[], total_count=0, has_more=False, query=keyword
+            )
 
         max_results = max_results or self.config.max_search_results
         keyword_lower = keyword.lower()
@@ -160,7 +166,9 @@ class RecipeSearchService:
                 seen_names.add(name)
 
         # 按相关性排序（简单的相关性：名称中关键词出现的位置）
-        matched_recipes.sort(key=lambda r: self._calculate_relevance(r.name, keyword_lower))
+        matched_recipes.sort(
+            key=lambda r: self._calculate_relevance(r.name, keyword_lower)
+        )
 
         # 分页处理
         total_count = len(matched_recipes)
@@ -168,7 +176,10 @@ class RecipeSearchService:
         shown_recipes = matched_recipes[:max_results]
 
         return SearchResult(
-            recipes=shown_recipes, total_count=total_count, has_more=has_more, query=keyword
+            recipes=shown_recipes,
+            total_count=total_count,
+            has_more=has_more,
+            query=keyword,
         )
 
     def _calculate_relevance(self, recipe_name: str, keyword: str) -> int:
@@ -203,13 +214,19 @@ class RecipeSearchService:
 
         return recipes
 
-    def get_random_recipes(self, count: int, category_zh: Optional[str] = None) -> List[Recipe]:
+    def get_random_recipes(
+        self, count: int, category_zh: Optional[str] = None
+    ) -> List[Recipe]:
         """获取随机食谱推荐 - 高性能实现"""
         # 限制推荐数量
-        count = max(self.config.min_random_count, min(count, self.config.max_random_count))
+        count = max(
+            self.config.min_random_count, min(count, self.config.max_random_count)
+        )
 
         # 选择对应的随机池
-        pool_key = category_zh if category_zh and category_zh in self._random_pool else ""
+        pool_key = (
+            category_zh if category_zh and category_zh in self._random_pool else ""
+        )
 
         if pool_key not in self._random_pool:
             return []
@@ -244,9 +261,14 @@ class RecipeSearchService:
 
     def validate_category(self, category_zh: str) -> bool:
         """验证分类是否存在且有食谱"""
-        return category_zh in self._category_index and len(self._category_index[category_zh]) > 0
+        return (
+            category_zh in self._category_index
+            and len(self._category_index[category_zh]) > 0
+        )
 
-    def get_search_suggestions(self, partial_keyword: str, max_suggestions: int = 5) -> List[str]:
+    def get_search_suggestions(
+        self, partial_keyword: str, max_suggestions: int = 5
+    ) -> List[str]:
         """获取搜索建议（自动补全）"""
         if not partial_keyword.strip():
             return []
@@ -277,8 +299,12 @@ class RecipeSearchService:
             "categories_info": self.get_categories_info(),
             "index_sizes": {
                 "name_index": len(self._name_index),
-                "category_index": sum(len(recipes) for recipes in self._category_index.values()),
-                "keyword_index": sum(len(names) for names in self._keyword_index.values()),
+                "category_index": sum(
+                    len(recipes) for recipes in self._category_index.values()
+                ),
+                "keyword_index": sum(
+                    len(names) for names in self._keyword_index.values()
+                ),
                 "random_pools": {k: len(v) for k, v in self._random_pool.items()},
             },
         }

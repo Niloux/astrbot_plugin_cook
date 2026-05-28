@@ -3,15 +3,52 @@
 import logging
 import random
 import urllib.parse
+from html.parser import HTMLParser
 
 import requests
+
+
+class RecipeCardParser(HTMLParser):
+    """Extract recipe cards from HowToCookViewer HTML."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.recipes = []
+        self._current_href = ""
+        self._capture_title = False
+
+    def handle_starttag(self, tag, attrs):
+        attr_map = dict(attrs)
+        if tag == "a":
+            href = attr_map.get("href", "")
+            self._current_href = href if href.startswith("/Recipes/Detail/") else ""
+            return
+
+        if tag in {"h5", "h6"} and self._current_href:
+            classes = attr_map.get("class", "")
+            if "card-title" in classes:
+                self._capture_title = True
+
+    def handle_data(self, data):
+        if not self._capture_title or not self._current_href:
+            return
+
+        title = data.strip()
+        if title:
+            self.recipes.append({"name": title, "url": self._current_href})
+
+    def handle_endtag(self, tag):
+        if tag in {"h5", "h6"}:
+            self._capture_title = False
+        elif tag == "a":
+            self._current_href = ""
 
 
 class Recipes:
     """食谱获取与管理类"""
 
-    BASE_URL = "https://cook.aiursoft.cn/search/search_index.json"
-    SITE_URL = "https://cook.aiursoft.cn/"
+    BASE_URL = "https://howtocook.aiursoft.com/Recipes"
+    SITE_URL = "https://howtocook.aiursoft.com/"
     TYPES = {
         "aquatic": "水产",
         "breakfast": "早餐",
@@ -27,21 +64,67 @@ class Recipes:
     TYPES_ZH_TO_EN = {type_zh: type_en for type_en, type_zh in TYPES.items()}
 
     def __init__(self):
-        self.recipes = {type_zh: {} for type_zh in self.TYPES.values()}  # 改为字典存储菜名和URL
+        self.recipes = {
+            type_zh: {} for type_zh in self.TYPES.values()
+        }  # 改为字典存储菜名和URL
         self.total_count = 0
         self._fetch_and_process_recipes()
 
     def _fetch_and_process_recipes(self):
         """从远程获取并处理食谱数据"""
         try:
-            response = requests.get(self.BASE_URL, timeout=10)
-            response.raise_for_status()
-            data = response.json().get("docs", [])
+            data = self._fetch_recipe_cards()
             self._process_recipes(data)
         except requests.RequestException as e:
             logging.error(f"请求失败: {e}")
-        except ValueError as e:
+        except (RuntimeError, ValueError) as e:
             logging.error(f"解析响应失败: {e}")
+
+    def _fetch_recipe_cards(self):
+        """从新版 HowToCookViewer 分类页抓取食谱卡片"""
+        cards = []
+
+        for category in self.TYPES:
+            page = 1
+            while True:
+                url = self._build_category_page_url(category, page)
+                response = requests.get(
+                    url,
+                    headers={"Accept-Language": "zh-CN,zh;q=0.9"},
+                    timeout=10,
+                )
+                response.raise_for_status()
+
+                page_cards = self._parse_recipe_cards(response.text, category)
+                if not page_cards:
+                    break
+
+                cards.extend(page_cards)
+
+                has_more = response.headers.get("X-Has-More", "").lower()
+                if page > 1 and has_more == "false":
+                    break
+
+                page += 1
+
+        return cards
+
+    def _build_category_page_url(self, category, page):
+        if page == 1:
+            return f"{self.BASE_URL}?category={urllib.parse.quote(category)}"
+        return f"{self.SITE_URL.rstrip('/')}/Recipes/LoadMore?category={urllib.parse.quote(category)}&page={page}"
+
+    def _parse_recipe_cards(self, html, category):
+        parser = RecipeCardParser()
+        parser.feed(html)
+        return [
+            {
+                "name": recipe["name"],
+                "category": category,
+                "url": urllib.parse.urljoin(self.SITE_URL, recipe["url"]),
+            }
+            for recipe in parser.recipes
+        ]
 
     def _process_recipes(self, data):
         """处理并分类存储食谱数据"""
@@ -52,6 +135,21 @@ class Recipes:
         dish_urls = {}  # 用于去重和存储完整URL
 
         for item in data:
+            if {"name", "category", "url"}.issubset(item):
+                category = item.get("category", "")
+                dish_name = item.get("name", "").strip()
+                dish_url = item.get("url", "")
+
+                if category not in self.TYPES or not dish_name:
+                    continue
+
+                category_zh = self.TYPES[category]
+                dish_key = f"{category_zh}:{dish_name}"
+                if dish_key not in dish_urls:
+                    dish_urls[dish_key] = dish_url
+                    self.recipes[category_zh][dish_name] = dish_url
+                continue
+
             location = item.get("location", "")
             if not location or "dishes/" not in location or "#" in location:
                 continue
@@ -81,8 +179,9 @@ class Recipes:
             category_zh = self.TYPES[category]
 
             # 存储菜名和对应的URL（去重）
-            if dish_name not in dish_urls:
-                dish_urls[dish_name] = location
+            dish_key = f"{category_zh}:{dish_name}"
+            if dish_key not in dish_urls:
+                dish_urls[dish_key] = location
                 self.recipes[category_zh][dish_name] = location
 
         # 统计总数
@@ -128,7 +227,11 @@ class Recipes:
         for category, dishes in self.recipes.items():
             if food in dishes:
                 dish_url = dishes[food]
-                full_url = self.SITE_URL + dish_url
+                full_url = (
+                    dish_url
+                    if dish_url.startswith(("http://", "https://"))
+                    else urllib.parse.urljoin(self.SITE_URL, dish_url)
+                )
                 return f"📖 {food} 的制作方式：\n{full_url}"
 
         logging.warning(f"未找到菜品: {food}")
@@ -166,10 +269,14 @@ class Recipes:
 
         if len(results) > 10:
             shown_results = results[:10]
-            result_list = "\n".join(f"• {dish} ({category})" for category, dish in shown_results)
+            result_list = "\n".join(
+                f"• {dish} ({category})" for category, dish in shown_results
+            )
             return f"🔍 搜索 '{keyword}' 的结果（显示前10个，共{len(results)}个）：\n{result_list}\n\n... 还有 {len(results) - 10} 个结果"
         else:
-            result_list = "\n".join(f"• {dish} ({category})" for category, dish in results)
+            result_list = "\n".join(
+                f"• {dish} ({category})" for category, dish in results
+            )
             return f"🔍 搜索 '{keyword}' 的结果（共{len(results)}个）：\n{result_list}"
 
     def get_random_recipes(self, count=5):
@@ -185,11 +292,10 @@ class Recipes:
         random_count = min(count, len(all_dishes))
         random_dishes = random.sample(all_dishes, random_count)
 
-        result_list = "\n".join(f"• {dish} ({category})" for category, dish in random_dishes)
+        result_list = "\n".join(
+            f"• {dish} ({category})" for category, dish in random_dishes
+        )
         return f"🎲 随机推荐 {random_count} 道菜：\n{result_list}"
-
-
-recipes = Recipes()
 
 
 if __name__ == "__main__":

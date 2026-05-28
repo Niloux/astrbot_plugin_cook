@@ -56,7 +56,9 @@ class DataValidator:
             valid_list = ", ".join(valid_categories[:5])  # 只显示前5个
             if len(valid_categories) > 5:
                 valid_list += f" 等{len(valid_categories)}个分类"
-            raise ValidationError("category", category, f"无效分类，可用分类: {valid_list}")
+            raise ValidationError(
+                "category", category, f"无效分类，可用分类: {valid_list}"
+            )
 
         return category
 
@@ -95,11 +97,15 @@ class DataValidator:
             raise ValidationError("search_keyword", keyword, "搜索关键词不能为空")
 
         if len(keyword) > 50:
-            raise ValidationError("search_keyword", keyword, "搜索关键词长度不能超过50个字符")
+            raise ValidationError(
+                "search_keyword", keyword, "搜索关键词长度不能超过50个字符"
+            )
 
         # 检查是否包含特殊字符（允许中文、英文、数字、空格）
         if not re.match(r"^[\u4e00-\u9fa5a-zA-Z0-9\s]+$", keyword):
-            raise ValidationError("search_keyword", keyword, "只能包含中文、英文、数字和空格")
+            raise ValidationError(
+                "search_keyword", keyword, "只能包含中文、英文、数字和空格"
+            )
 
         return keyword
 
@@ -140,7 +146,9 @@ class DataValidator:
         # 检查必需字段
         for field in required_fields:
             if field not in recipe_data:
-                raise ValidationError("recipe_data", recipe_data, f"缺少必需字段: {field}")
+                raise ValidationError(
+                    "recipe_data", recipe_data, f"缺少必需字段: {field}"
+                )
 
         validated_data = {}
 
@@ -148,7 +156,10 @@ class DataValidator:
         validated_data["name"] = self.validate_recipe_name(recipe_data["name"])
 
         # 验证分类（这里假设英文分类已验证）
-        if not isinstance(recipe_data["category"], str) or not recipe_data["category"].strip():
+        if (
+            not isinstance(recipe_data["category"], str)
+            or not recipe_data["category"].strip()
+        ):
             raise ValidationError("category", recipe_data["category"], "英文分类无效")
         validated_data["category"] = recipe_data["category"].strip()
 
@@ -157,7 +168,9 @@ class DataValidator:
             not isinstance(recipe_data["category_zh"], str)
             or not recipe_data["category_zh"].strip()
         ):
-            raise ValidationError("category_zh", recipe_data["category_zh"], "中文分类无效")
+            raise ValidationError(
+                "category_zh", recipe_data["category_zh"], "中文分类无效"
+            )
         validated_data["category_zh"] = recipe_data["category_zh"].strip()
 
         # 验证URL
@@ -165,15 +178,21 @@ class DataValidator:
 
         return validated_data
 
-    def validate_command_params(self, command: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_command_params(
+        self, command: str, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """验证命令参数"""
         validated_params = {}
 
         if command == "search":
             if "keyword" in params:
-                validated_params["keyword"] = self.validate_search_keyword(params["keyword"])
+                validated_params["keyword"] = self.validate_search_keyword(
+                    params["keyword"]
+                )
             if "limit" in params:
-                validated_params["limit"] = self.validate_search_results_limit(params["limit"])
+                validated_params["limit"] = self.validate_search_results_limit(
+                    params["limit"]
+                )
 
         elif command == "random":
             if "count" in params:
@@ -181,12 +200,16 @@ class DataValidator:
             if "category" in params and params["category"]:
                 # 分类验证需要在具体使用时进行，这里只做基础验证
                 if not isinstance(params["category"], str):
-                    raise ValidationError("category", params["category"], "必须是字符串类型")
+                    raise ValidationError(
+                        "category", params["category"], "必须是字符串类型"
+                    )
                 validated_params["category"] = params["category"].strip()
 
         elif command == "recipe_url":
             if "dish_name" in params:
-                validated_params["dish_name"] = self.validate_recipe_name(params["dish_name"])
+                validated_params["dish_name"] = self.validate_recipe_name(
+                    params["dish_name"]
+                )
 
         return validated_params
 
@@ -211,7 +234,11 @@ class DataValidator:
                 raise ValidationError("cache_ttl", ttl, "必须是正整数")
 
         # 验证限制参数
-        limit_fields = ["max_search_results", "max_random_results", "max_category_display"]
+        limit_fields = [
+            "max_search_results",
+            "max_random_results",
+            "max_category_display",
+        ]
         for field in limit_fields:
             if field in config:
                 value = config[field]

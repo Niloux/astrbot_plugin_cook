@@ -42,29 +42,40 @@ class RecipeConfig:
     )
     search_cache_size: int = field(
         default_factory=lambda: int(
-            os.getenv("RECIPE_SEARCH_CACHE_SIZE", str(CACHE_CONSTANTS["SEARCH_CACHE_SIZE"]))
+            os.getenv(
+                "RECIPE_SEARCH_CACHE_SIZE", str(CACHE_CONSTANTS["SEARCH_CACHE_SIZE"])
+            )
         )
     )
     random_pool_size: int = field(
         default_factory=lambda: int(
-            os.getenv("RECIPE_RANDOM_POOL_SIZE", str(CACHE_CONSTANTS["RANDOM_POOL_SIZE"]))
+            os.getenv(
+                "RECIPE_RANDOM_POOL_SIZE", str(CACHE_CONSTANTS["RANDOM_POOL_SIZE"])
+            )
         )
     )
 
     # 限制配置
     max_search_results: int = field(
         default_factory=lambda: int(
-            os.getenv("RECIPE_MAX_SEARCH_RESULTS", str(DEFAULT_LIMITS["MAX_SEARCH_RESULTS"]))
+            os.getenv(
+                "RECIPE_MAX_SEARCH_RESULTS", str(DEFAULT_LIMITS["MAX_SEARCH_RESULTS"])
+            )
         )
     )
     max_random_results: int = field(
         default_factory=lambda: int(
-            os.getenv("RECIPE_MAX_RANDOM_RESULTS", str(DEFAULT_LIMITS["MAX_RANDOM_RESULTS"]))
+            os.getenv(
+                "RECIPE_MAX_RANDOM_RESULTS", str(DEFAULT_LIMITS["MAX_RANDOM_RESULTS"])
+            )
         )
     )
     max_category_display: int = field(
         default_factory=lambda: int(
-            os.getenv("RECIPE_MAX_CATEGORY_DISPLAY", str(DEFAULT_LIMITS["MAX_CATEGORY_DISPLAY"]))
+            os.getenv(
+                "RECIPE_MAX_CATEGORY_DISPLAY",
+                str(DEFAULT_LIMITS["MAX_CATEGORY_DISPLAY"]),
+            )
         )
     )
     min_random_count: int = DEFAULT_LIMITS["MIN_RANDOM_COUNT"]

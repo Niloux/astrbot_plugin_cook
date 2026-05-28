@@ -45,7 +45,10 @@ class DataSourceError(Exception):
     """数据源异常基类"""
 
     def __init__(
-        self, message: str, source: Optional[str] = None, cause: Optional[Exception] = None
+        self,
+        message: str,
+        source: Optional[str] = None,
+        cause: Optional[Exception] = None,
     ):
         self.message = message
         self.source = source

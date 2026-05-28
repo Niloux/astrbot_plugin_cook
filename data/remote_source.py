@@ -2,7 +2,8 @@
 
 import asyncio
 import urllib.parse
-from typing import Any, Dict, List, Optional
+from html.parser import HTMLParser
+from typing import Any
 
 import httpx
 
@@ -10,6 +11,42 @@ from astrbot.api import logger
 
 from ..config.settings import RecipeConfig
 from .source import DataParseError, DataValidationError, NetworkError, RecipeDataSource
+
+
+class _RecipeCardParser(HTMLParser):
+    """Extract recipe cards from HowToCookViewer HTML."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.recipes: list[dict[str, str]] = []
+        self._current_href = ""
+        self._capture_title = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attr_map = dict(attrs)
+        if tag == "a":
+            href = attr_map.get("href", "")
+            self._current_href = href if href.startswith("/Recipes/Detail/") else ""
+            return
+
+        if tag in {"h5", "h6"} and self._current_href:
+            classes = attr_map.get("class", "")
+            if "card-title" in classes:
+                self._capture_title = True
+
+    def handle_data(self, data: str) -> None:
+        if not self._capture_title or not self._current_href:
+            return
+
+        title = data.strip()
+        if title:
+            self.recipes.append({"title": title, "href": self._current_href})
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"h5", "h6"}:
+            self._capture_title = False
+        elif tag == "a":
+            self._current_href = ""
 
 
 class RemoteRecipeSource(RecipeDataSource):
@@ -20,7 +57,7 @@ class RemoteRecipeSource(RecipeDataSource):
 
     def __init__(self, config: RecipeConfig):
         self.config = config
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self):
         """异步上下文管理器入口"""
@@ -35,7 +72,7 @@ class RemoteRecipeSource(RecipeDataSource):
             await self._client.aclose()
             self._client = None
 
-    async def fetch_recipes(self) -> List[Dict[str, Any]]:
+    async def fetch_recipes(self) -> list[dict[str, Any]]:
         """获取食谱数据，带重试机制"""
         last_error = None
 
@@ -60,7 +97,7 @@ class RemoteRecipeSource(RecipeDataSource):
         # 所有重试都失败了
         raise last_error or NetworkError("未知网络错误", source="remote_api")
 
-    async def _fetch_with_client(self) -> List[Dict[str, Any]]:
+    async def _fetch_with_client(self) -> list[dict[str, Any]]:
         """使用HTTP客户端获取数据"""
         if not self._client:
             self._client = httpx.AsyncClient(
@@ -72,15 +109,21 @@ class RemoteRecipeSource(RecipeDataSource):
             response = await self._client.get(self.config.base_url)
             response.raise_for_status()
 
-            # 解析JSON响应
+            content_type = response.headers.get("content-type", "")
+            if "application/json" not in content_type:
+                return await self._fetch_from_html_pages()
+
             try:
                 data = response.json()
             except ValueError as e:
-                raise DataParseError(f"JSON解析失败: {str(e)}", source="remote_api", cause=e)
+                raise DataParseError(
+                    f"JSON解析失败: {str(e)}", source="remote_api", cause=e
+                )
 
-            # 验证响应结构
             if not isinstance(data, dict):
-                raise DataValidationError("响应数据不是有效的JSON对象", source="remote_api")
+                raise DataValidationError(
+                    "响应数据不是有效的JSON对象", source="remote_api"
+                )
 
             docs = data.get("docs", [])
             if not isinstance(docs, list):
@@ -98,6 +141,82 @@ class RemoteRecipeSource(RecipeDataSource):
         except httpx.TimeoutException as e:
             raise NetworkError(f"请求超时: {str(e)}", source="remote_api", cause=e)
 
+    async def _fetch_from_html_pages(self) -> list[dict[str, Any]]:
+        """Fetch recipes from the current HowToCookViewer server-rendered pages."""
+        from ..config.constants import RECIPE_CATEGORIES
+
+        recipes: list[dict[str, Any]] = []
+
+        for category in RECIPE_CATEGORIES:
+            page = 1
+            while True:
+                response = await self._get_html_page(
+                    self._build_category_page_url(category, page)
+                )
+
+                page_recipes = self._parse_recipe_cards(response.text, category)
+                if not page_recipes:
+                    break
+
+                recipes.extend(page_recipes)
+
+                has_more = response.headers.get("X-Has-More", "").lower()
+                if page > 1 and has_more == "false":
+                    break
+
+                page += 1
+
+        logger.info(f"成功从 HTML 页面获取 {len(recipes)} 条原始数据")
+        return recipes
+
+    async def _get_html_page(self, url: str) -> httpx.Response:
+        last_error: Exception | None = None
+        for attempt in range(self.config.max_retries + 1):
+            try:
+                response = await self._client.get(
+                    url,
+                    headers={"Accept-Language": "zh-CN,zh;q=0.9"},
+                )
+                response.raise_for_status()
+                return response
+            except httpx.HTTPError as e:
+                last_error = e
+                if attempt >= self.config.max_retries:
+                    break
+
+                wait_time = self.config.retry_delay * (2**attempt)
+                logger.warning(f"获取页面失败，{wait_time}秒后重试: {url}, {str(e)}")
+                await asyncio.sleep(wait_time)
+
+        raise NetworkError(
+            f"页面请求失败: {url}, {str(last_error)}", source="remote_api"
+        )
+
+    def _build_category_page_url(self, category: str, page: int) -> str:
+        """Build HowToCookViewer category URL for the first page or load-more pages."""
+        base_url = self.config.base_url.rstrip("/")
+        if page == 1:
+            return f"{base_url}?category={urllib.parse.quote(category)}"
+        return f"{self.config.site_url.rstrip('/')}/Recipes/LoadMore?category={urllib.parse.quote(category)}&page={page}"
+
+    def _parse_recipe_cards(self, html: str, category: str) -> list[dict[str, str]]:
+        parser = _RecipeCardParser()
+        try:
+            parser.feed(html)
+        except Exception as e:
+            raise DataParseError(
+                f"HTML解析失败: {str(e)}", source="remote_api", cause=e
+            )
+
+        return [
+            {
+                "name": recipe["title"],
+                "category": category,
+                "url": urllib.parse.urljoin(self.config.site_url, recipe["href"]),
+            }
+            for recipe in parser.recipes
+        ]
+
     async def health_check(self) -> bool:
         """检查远程API健康状态"""
         try:
@@ -107,14 +226,14 @@ class RemoteRecipeSource(RecipeDataSource):
                     follow_redirects=True,
                 )
 
-            response = await self._client.head(self.config.base_url)
+            response = await self._client.get(self.config.base_url)
             return response.status_code == 200
 
         except Exception as e:
             logger.warning(f"健康检查失败: {str(e)}")
             return False
 
-    def get_source_info(self) -> Dict[str, Any]:
+    def get_source_info(self) -> dict[str, Any]:
         """获取数据源信息"""
         return {
             "type": "remote",
@@ -125,7 +244,7 @@ class RemoteRecipeSource(RecipeDataSource):
             "retry_delay": self.config.retry_delay,
         }
 
-    def process_raw_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    def process_raw_data(self, raw_data: list[dict[str, Any]]) -> list[dict[str, str]]:
         """处理原始数据，提取有效的食谱信息
 
         Args:
@@ -140,6 +259,31 @@ class RemoteRecipeSource(RecipeDataSource):
         seen_dishes = set()  # 去重
 
         for item in raw_data:
+            if {"name", "category", "url"}.issubset(item):
+                category_en = item.get("category", "")
+                if category_en not in RECIPE_CATEGORIES:
+                    continue
+
+                category_zh = RECIPE_CATEGORIES[category_en]
+                dish_name = item.get("name", "").strip()
+                if not dish_name:
+                    continue
+
+                dish_key = f"{dish_name}_{category_zh}"
+                if dish_key in seen_dishes:
+                    continue
+                seen_dishes.add(dish_key)
+
+                processed_recipes.append(
+                    {
+                        "name": dish_name,
+                        "category": category_en,
+                        "category_zh": category_zh,
+                        "url": item.get("url", ""),
+                    }
+                )
+                continue
+
             location = item.get("location", "")
             if not location or "dishes/" not in location or "#" in location:
                 continue
@@ -174,12 +318,16 @@ class RemoteRecipeSource(RecipeDataSource):
                 continue
             seen_dishes.add(dish_key)
 
-            processed_recipes.append({
-                "name": dish_name,
-                "category": category_en,
-                "category_zh": category_zh,
-                "url": location,
-            })
+            processed_recipes.append(
+                {
+                    "name": dish_name,
+                    "category": category_en,
+                    "category_zh": category_zh,
+                    "url": location,
+                }
+            )
 
-        logger.info(f"原始数据 {len(raw_data)} 条，处理后有效数据 {len(processed_recipes)} 条")
+        logger.info(
+            f"原始数据 {len(raw_data)} 条，处理后有效数据 {len(processed_recipes)} 条"
+        )
         return processed_recipes

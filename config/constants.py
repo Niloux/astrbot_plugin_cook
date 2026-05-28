@@ -1,9 +1,7 @@
 """常量定义"""
 
-from typing import Dict
-
 # 食谱分类映射
-RECIPE_CATEGORIES: Dict[str, str] = {
+RECIPE_CATEGORIES: dict[str, str] = {
     "aquatic": "水产",
     "breakfast": "早餐",
     "condiment": "酱料与其他材料",
@@ -17,7 +15,7 @@ RECIPE_CATEGORIES: Dict[str, str] = {
 }
 
 # 中文到英文分类的反向映射
-CATEGORIES_ZH_TO_EN: Dict[str, str] = {
+CATEGORIES_ZH_TO_EN: dict[str, str] = {
     category_zh: category_en for category_en, category_zh in RECIPE_CATEGORIES.items()
 }
 
@@ -32,8 +30,8 @@ DEFAULT_LIMITS = {
 
 # API相关常量
 API_CONSTANTS = {
-    "BASE_URL": "https://cook.aiursoft.cn/search/search_index.json",
-    "SITE_URL": "https://cook.aiursoft.cn/",
+    "BASE_URL": "https://howtocook.aiursoft.com/Recipes",
+    "SITE_URL": "https://howtocook.aiursoft.com/",
     "REQUEST_TIMEOUT": 10.0,
     "MAX_RETRIES": 3,
     "RETRY_DELAY": 1.0,

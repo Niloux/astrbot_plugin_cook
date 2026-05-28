@@ -92,11 +92,15 @@ class CookPlugin(Star):
                     return
 
             # 调用服务层
-            result = await self._recipe_service.get_random_recipe(category if category else None)
+            result = await self._recipe_service.get_random_recipe(
+                category if category else None
+            )
             yield event.plain_result(result)
 
         except ValidationError as e:
-            error_msg = self._formatter.format_validation_error(e.field, e.value, e.reason)
+            error_msg = self._formatter.format_validation_error(
+                e.field, e.value, e.reason
+            )
             yield event.plain_result(error_msg)
         except Exception as e:
             logger.error(f"随机推荐失败: {str(e)}")
@@ -133,7 +137,9 @@ class CookPlugin(Star):
             yield event.plain_result(result)
 
         except ValidationError as e:
-            error_msg = self._formatter.format_validation_error(e.field, e.value, e.reason)
+            error_msg = self._formatter.format_validation_error(
+                e.field, e.value, e.reason
+            )
             yield event.plain_result(error_msg)
         except Exception as e:
             logger.error(f"搜索失败: {str(e)}")
@@ -155,7 +161,9 @@ class CookPlugin(Star):
             yield event.plain_result(result)
 
         except ValidationError as e:
-            error_msg = self._formatter.format_validation_error(e.field, e.value, e.reason)
+            error_msg = self._formatter.format_validation_error(
+                e.field, e.value, e.reason
+            )
             yield event.plain_result(error_msg)
         except Exception as e:
             logger.error(f"获取制作方法失败: {str(e)}")
@@ -177,7 +185,9 @@ class CookPlugin(Star):
             yield event.plain_result(result)
 
         except ValidationError as e:
-            error_msg = self._formatter.format_validation_error(e.field, e.value, e.reason)
+            error_msg = self._formatter.format_validation_error(
+                e.field, e.value, e.reason
+            )
             yield event.plain_result(error_msg)
         except Exception as e:
             logger.error(f"随机推荐失败: {str(e)}")

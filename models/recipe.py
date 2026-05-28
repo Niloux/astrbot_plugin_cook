@@ -1,11 +1,11 @@
 """食谱数据模型"""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 # 字符串池化 - 减少重复字符串的内存占用
-_string_pool: Dict[str, str] = {}
-_site_url_cache = "https://cook.aiursoft.cn/"
+_string_pool: dict[str, str] = {}
+_site_url_cache = "https://howtocook.aiursoft.com/"
 
 
 def _intern_string(s: str) -> str:
@@ -47,11 +47,11 @@ class Recipe:
     @property
     def full_url(self) -> str:
         """获取完整URL - 缓存计算结果"""
-        if self.url.startswith(_site_url_cache):
+        if self.url.startswith(("http://", "https://")):
             return self.url
         return _site_url_cache + self.url.lstrip("/")
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         """转换为字典格式"""
         return {
             "name": self.name,
@@ -70,7 +70,7 @@ class Recipe:
 class SearchResult:
     """搜索结果数据模型"""
 
-    recipes: List[Recipe]
+    recipes: list[Recipe]
     total_count: int
     has_more: bool
     query: str = ""
@@ -95,7 +95,7 @@ class SearchResult:
         """显示的结果数量"""
         return len(self.recipes)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典格式"""
         return {
             "recipes": [recipe.to_dict() for recipe in self.recipes],
@@ -128,7 +128,7 @@ class CategoryInfo:
         object.__setattr__(self, "name_zh", _intern_string(self.name_zh))
         object.__setattr__(self, "name_en", _intern_string(self.name_en))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典格式"""
         return {"name_zh": self.name_zh, "name_en": self.name_en, "count": self.count}
 
@@ -140,7 +140,7 @@ def clear_string_pool() -> int:
     return count
 
 
-def get_string_pool_stats() -> Dict[str, Any]:
+def get_string_pool_stats() -> dict[str, Any]:
     """获取字符串池统计信息"""
     return {
         "pool_size": len(_string_pool),

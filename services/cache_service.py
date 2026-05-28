@@ -74,7 +74,9 @@ class LRUCache:
         with self._lock:
             current_time = time.time()
             expired_keys = [
-                key for key, (_, expire_time) in self._cache.items() if current_time > expire_time
+                key
+                for key, (_, expire_time) in self._cache.items()
+                if current_time > expire_time
             ]
 
             for key in expired_keys:
@@ -92,7 +94,9 @@ class LRUCache:
         with self._lock:
             current_time = time.time()
             expired_count = sum(
-                1 for _, (_, expire_time) in self._cache.items() if current_time > expire_time
+                1
+                for _, (_, expire_time) in self._cache.items()
+                if current_time > expire_time
             )
 
             return {
@@ -115,7 +119,9 @@ class CacheService:
         random_pool_size = getattr(config, "random_pool_size", 50) if config else 50
 
         # 不同类型的缓存
-        self.search_cache = LRUCache(max_size=search_cache_size, default_ttl=default_ttl)
+        self.search_cache = LRUCache(
+            max_size=search_cache_size, default_ttl=default_ttl
+        )
         self.random_cache = LRUCache(max_size=random_pool_size, default_ttl=default_ttl)
         self.category_cache = LRUCache(
             max_size=20, default_ttl=default_ttl * 2
@@ -143,7 +149,9 @@ class CacheService:
 
         return result
 
-    def set_search_result(self, query: str, result: Any, ttl: Optional[int] = None) -> None:
+    def set_search_result(
+        self, query: str, result: Any, ttl: Optional[int] = None
+    ) -> None:
         """设置搜索结果缓存"""
         cache_key = f"search:{query.lower()}"
         self.search_cache.set(cache_key, result, ttl)
@@ -179,7 +187,9 @@ class CacheService:
 
         return result
 
-    def set_category_info(self, category: str, result: Any, ttl: Optional[int] = None) -> None:
+    def set_category_info(
+        self, category: str, result: Any, ttl: Optional[int] = None
+    ) -> None:
         """设置分类信息缓存"""
         cache_key = f"category:{category}"
         self.category_cache.set(cache_key, result, ttl)
@@ -227,8 +237,12 @@ class CacheService:
         total_random = self.stats["random_hits"] + self.stats["random_misses"]
         total_category = self.stats["category_hits"] + self.stats["category_misses"]
 
-        search_hit_rate = self.stats["search_hits"] / total_search if total_search > 0 else 0
-        random_hit_rate = self.stats["random_hits"] / total_random if total_random > 0 else 0
+        search_hit_rate = (
+            self.stats["search_hits"] / total_search if total_search > 0 else 0
+        )
+        random_hit_rate = (
+            self.stats["random_hits"] / total_random if total_random > 0 else 0
+        )
         category_hit_rate = (
             self.stats["category_hits"] / total_category if total_category > 0 else 0
         )
